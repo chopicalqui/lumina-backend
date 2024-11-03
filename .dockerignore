@@ -1,0 +1,11 @@
+**/*.log
+**/.env*
+**/*.pyc
+**/.git
+**/.gitignore
+**/.DS_Store
+**/__pycache__
+**/*.key
+**/*.crt
+**/*.csr
+**/*.pem
