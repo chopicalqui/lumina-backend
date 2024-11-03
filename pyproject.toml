@@ -5,6 +5,7 @@ description = "Backend API service for Lumina, providing RESTful endpoints for f
 authors = ["Lukas Reiter <chopicalqui@protonmail.com>"]
 license = "GPLv3"
 readme = "README.md"
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.10"
