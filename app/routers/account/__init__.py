@@ -13,32 +13,11 @@
 # You should have received a copy of the GNU General Public License
 # along with Lumina. If not, see <https://www.gnu.org/licenses/>.
 
+
+from __future__ import annotations
+
 __author__ = "Lukas Reiter"
 __copyright__ = "Copyright (C) 2024 Lukas Reiter"
 __license__ = "GPLv3"
 
-import os
-from pathlib import Path
-from dotenv import load_dotenv
-
-# We load the environment variables from the .env files.
-APP_DIRECTORY = Path(__file__).parent.parent.parent.parent / "envs"
-if not os.path.isdir(APP_DIRECTORY):
-    raise FileNotFoundError("Environment directory not found.")
-load_dotenv(APP_DIRECTORY / ".env.backend")
-load_dotenv(APP_DIRECTORY / ".env.backend.core")
-load_dotenv(APP_DIRECTORY / ".env.redis")
-
-from api.setup import prod_app as app, test_app as test
-
-
-def main():
-    """
-    Run this module as a script. This is only useful for debugging purposes.
-    """
-    import uvicorn
-    uvicorn.run("main:test", reload=True, port=8090, host="127.0.0.1")
-
-
-if __name__ == "__main__":
-    main()
+from .account import *

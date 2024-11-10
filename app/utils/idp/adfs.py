@@ -19,10 +19,10 @@ __license__ = "GPLv3"
 
 from . import IdentityProviderBase
 from typing import Dict, List
-from util.auth import AuthenticationError
-from util.config import settings
-from core.models.user.user import User
-from core.models.user.role import RoleEnum
+from utils.auth import AuthenticationError
+from utils.config import settings
+from core.models.account import Account
+from core.models.account.role import RoleEnum
 
 
 class AdfsIdentityProvider(IdentityProviderBase):
@@ -42,9 +42,9 @@ class AdfsIdentityProvider(IdentityProviderBase):
         """
         raise NotImplementedError()
 
-    async def _get_user_from_token(self, claims: Dict) -> User:
+    async def _get_account_from_token(self, claims: Dict) -> Account:
         """
-        This method converts the token obtained from the identity provider to a user object.
+        This method converts the token obtained from the identity provider to an Account object.
         """
         # Verify the content of the given access token
         if "sub" not in claims:
@@ -56,12 +56,12 @@ class AdfsIdentityProvider(IdentityProviderBase):
         # Make sure the access token was issued for Lumina
         if claims["client_id"] != settings.client_id:
             raise AuthenticationError("The given claim was not issued for this application.")
-        # Extract relevant information from access token and create User object
+        # Extract relevant information from access token and create an Account object
         email = claims["sub"].lower()
         roles = self._get_roles(claims)
         firstname = claims['firstname']
         lastname = claims['lastname']
-        return User(
+        return Account(
             email=email,
             roles=roles,
             locked=False,

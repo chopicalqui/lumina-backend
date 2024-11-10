@@ -19,7 +19,13 @@ __license__ = "GPLv3"
 
 from starlette.responses import Response
 from starlette.middleware.base import BaseHTTPMiddleware
-from util.config import API_PREFIX
+from utils.config import API_PREFIX
+from routers.auth import router as auth_router
+from routers.country import router as country_router
+from routers.account import router as account_router
+from routers.websockets import router as websocket_router
+from routers.account.mui_data_grid import router as account_mui_data_grid_router
+from routers.account.notification import router as account_notification_router
 
 
 class CustomHeaderMiddleware(BaseHTTPMiddleware):
@@ -47,4 +53,9 @@ def add_routes(app):
     This method can be used to add all routes to the given FastAPI app.
     :param app: FastAPI app
     """
-    ...
+    app.include_router(auth_router)
+    app.include_router(country_router)
+    app.include_router(account_router)
+    app.include_router(account_mui_data_grid_router)
+    app.include_router(account_notification_router)
+    app.include_router(websocket_router)

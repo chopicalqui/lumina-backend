@@ -21,15 +21,16 @@ from abc import abstractmethod
 from httpx import Response
 from typing import Tuple
 from fastapi import status
-from sqlalchemy import and_
+from sqlalchemy import update, and_
+from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import timedelta, datetime
-from util.auth import AuthenticationError, create_access_token, verify_token
-from util.config import settings
-from core import sha256
-from core.logging import logger
-from core.models.user.user import User
-from core.models.user.token import JsonWebToken as UserToken, TokenType
+from utils.auth import AuthenticationError, create_access_token, verify_token
+from utils.config import settings
+from core.utils import sha256
+from core.utils.logging import logger
+from core.models.account import Account
+from core.models.account.token import AccessToken, AccessTokenType
 from core.database import update_database_record
 
 
@@ -53,93 +54,97 @@ class IdentityProviderBase:
     @staticmethod
     async def create_token(
             session: AsyncSession,
-            user: User,
-            token_type: TokenType,
+            account: Account,
+            token_type: AccessTokenType,
             expires: datetime.date,
             token_name: str | None = None
-    ) -> Tuple[UserToken, str]:
+    ) -> Tuple[AccessToken, str]:
         """
         This method creates a new token.
         """
         access_token = create_access_token(
             data={
-                "sub": user.email,
-                "scopes": user.scopes_str,
+                "sub": account.email,
+                "scopes": account.scopes_str,
                 "name": token_name,
                 "type": token_type.name
             },
             expires=expires,
         )
         # We add the new access token to the database.
-        token = UserToken(
-            user=user,
+        token = AccessToken(
+            account=account,
             name=token_name,
             type=token_type,
             revoked=False,
             expiration=expires,
             value=sha256(access_token)
         )
-        await session.add(token)
+        session.add(token)
         return token, access_token
 
     @staticmethod
-    async def create_token_for_user(session: AsyncSession, claim_user: User) -> str:
+    async def create_token_for_account(session: AsyncSession, claim_account: Account) -> str:
         """
         This method performs all necessary checks
         """
-        # If the user does not have any roles, then we do not allow it to log in.
-        if len(claim_user.roles) == 0:
+        # If the account does not have any roles, then we do not allow it to log in.
+        if len(claim_account.roles) == 0:
             raise AuthenticationError("You are not authorized to access this application.")
-        # Check if the user exists and is active. If it exists, then we update its roles.
-        user = await session.query(User).filter_by(email=claim_user.email).first()
-        if not user:
-            user = claim_user
-            user.last_login = datetime.now()
-            await session.add(user)
+        # Check if the account exists and is active. If it exists, then we update its roles.
+        account = (await session.execute(
+            select(Account).filter_by(email=claim_account.email)
+        )).first()
+        if not account:
+            account = claim_account
+            account.last_login = datetime.now()
+            session.add(account)
         else:
-            # If the user is inactive, then we do not allow it to log in.
-            if not user.is_active:
+            # If the account is inactive, then we do not allow it to log in.
+            if not account.is_active:
                 raise AuthenticationError("You are not authorized to access this application.")
-            claim_user.id = user.id
-            user = await update_database_record(
+            claim_account.id = account.id
+            account = await update_database_record(
                 session=session,
-                source=claim_user,
-                source_model=User,
-                query_model=User,
+                source=claim_account,
+                source_model=Account,
+                query_model=Account,
                 commit=False,
                 exclude_unset=True
             )
-            # We have to save in local time because PostgreSQL will convert and store it to UTC.
-            user.last_login = datetime.now()
-            # We revoke all previously active user tokens.
-            await session.query(UserToken) \
+            # We have to save in local time because Postgres will convert and store it to UTC.
+            account.last_login = datetime.now()
+            # We revoke all previously active account tokens.
+            await session.execute(
+                update(AccessToken)
                 .filter(
                     and_(
-                        UserToken.user_id == user.id,
-                        UserToken.type == TokenType.user,
-                        UserToken.revoked == False
+                        AccessToken.account_id == account.id,
+                        AccessToken.type == AccessTokenType.user,
+                        not AccessToken.revoked
                     )
-                ).update({UserToken.revoked: True})
-        # Finally, we create a valid token for the user.
+                ).values(revoked=True)
+            )
+        # Finally, we create a valid token for the account.
         access_token_expires = timedelta(minutes=settings.oauth2_access_token_expire_minutes)
         _, access_token = await IdentityProviderBase.create_token(
             session=session,
-            user=user,
-            token_type=TokenType.user,
+            account=account,
+            token_type=AccessTokenType.user,
             expires=datetime.utcnow() + access_token_expires
         )
         return access_token
 
     @abstractmethod
-    def _get_user_from_token(self, claims: dict) -> User:
+    def _get_account_from_token(self, claims: dict) -> Account:
         """
-        This method converts the token obtained from the identity provider to a user object.
+        This method converts the token obtained from the identity provider to an account object.
         """
         ...
 
     async def get_token(self, session: AsyncSession):
         access_token = await verify_token(self._token_data["access_token"])
-        user = self._get_user_from_token(access_token)
-        token = await self.create_token_for_user(session=session, claim_user=user)
-        logger.info(f"User {user.email} successfully logged in.")
+        account = self._get_account_from_token(access_token)
+        token = await self.create_token_for_account(session=session, claim_account=account)
+        logger.info(f"Account {account.email} successfully logged in.")
         return token

@@ -25,17 +25,15 @@ import functools
 from httpx import HTTPStatusError
 from datetime import datetime
 from fastapi.openapi.models import OAuthFlows as OAuthFlowsModel
-from util.config import settings, COOKIE_NAME
-from core import LuminaException
-from core.models.user.role import RoleEnum, ApiPermissionEnum
-from fastapi import HTTPException, status
+from utils.config import settings, COOKIE_NAME
+from core.utils import AuthenticationError, IdpConnectionError
+from core.models.account.role import RoleEnum, ApiPermissionEnum
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt
 from pydantic import BaseModel
 from typing import Dict, List
 from fastapi.security.utils import get_authorization_scheme_param
 from starlette.requests import Request
-from starlette.status import HTTP_401_UNAUTHORIZED
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +53,10 @@ class OAuth2PasswordBearerWithCookie(fastapi.security.OAuth2):
     ):
         if not scopes:
             scopes = {}
-        flows = OAuthFlowsModel(password={"tokenUrl": token_url, "scopes": scopes})
+        flows = OAuthFlowsModel(password={
+            "tokenUrl": token_url,
+            "scopes": {key: value.description for key, value in scopes.items()}
+        })
         super().__init__(flows=flows, scheme_name=scheme_name, auto_error=auto_error)
 
     async def __call__(self, request: Request) -> str | None:
@@ -64,11 +65,7 @@ class OAuth2PasswordBearerWithCookie(fastapi.security.OAuth2):
         scheme, param = get_authorization_scheme_param(authorization)
         if not authorization or scheme.lower() != "bearer":
             if self.auto_error:
-                raise HTTPException(
-                    status_code=HTTP_401_UNAUTHORIZED,
-                    detail="Not authenticated",
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
+                raise AuthenticationError(message="Not authenticated")
             else:
                 return None
         return param
@@ -85,24 +82,6 @@ class Token(BaseModel):
     token_type: str
 
 
-class AuthenticationError(LuminaException):
-    def __init__(self, message: str = "Could not validate user."):
-        super().__init__(message)
-
-
-class IdpConnectionError(LuminaException):
-    def __init__(
-            self,
-            message: str = "Server could not connect to IdP to obtain your claim. Please try again later."
-    ):
-        super().__init__(message)
-
-
-class UserUpdateError(LuminaException):
-    def __init__(self, message: str):
-        super().__init__(message)
-
-
 def get_roles(roles: List[str]) -> List[RoleEnum]:
     """
     Get the roles from the given list of strings.
@@ -111,12 +90,12 @@ def get_roles(roles: List[str]) -> List[RoleEnum]:
 
 
 @functools.lru_cache()
-async def get_jwks():
+def get_jwks():
     """
     Get the JWKS from the Identity Provider.
     """
-    async with httpx.AsyncClient() as client:
-        response = await client.get(settings.jwks_url)
+    with httpx.Client() as client:
+        response = client.get(settings.jwks_url)
     if response.status_code != 200:
         raise IdpConnectionError()
     return response.json()
@@ -128,8 +107,7 @@ async def verify_token(token: str):
     """
     try:
         # Fetch the public key from JWKS endpoint
-        cache = await get_jwks()
-        jwks = cache.result()
+        jwks = get_jwks()
         header = jwt.get_unverified_header(token)
         kid = header['kid']
         rsa_key = {}

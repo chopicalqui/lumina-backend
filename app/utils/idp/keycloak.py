@@ -19,9 +19,9 @@ __license__ = "GPLv3"
 
 
 from . import IdentityProviderBase
-from util.auth import AuthenticationError, get_roles
-from util.config import settings
-from core.models.user.user import User
+from utils.auth import AuthenticationError, get_roles
+from utils.config import settings
+from core.models.account import Account
 
 
 class KeycloakIdentityProvider(IdentityProviderBase):
@@ -32,9 +32,9 @@ class KeycloakIdentityProvider(IdentityProviderBase):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    def _get_user_from_token(self, claims: dict) -> User:
+    def _get_account_from_token(self, claims: dict) -> Account:
         """
-        This method converts the token obtained from the identity provider to a user object.
+        This method converts the token obtained from the identity provider to an account object.
         """
         if claims["azp"] != settings.client_id:
             raise AuthenticationError("The given access token was not issued for this application.")
@@ -44,7 +44,7 @@ class KeycloakIdentityProvider(IdentityProviderBase):
         email_verified = claims["email_verified"]
         if not email_verified:
             raise AuthenticationError("Your email address has not been verified yet.")
-        return User(
+        return Account(
             email=email,
             roles=get_roles(roles),
             locked=False,

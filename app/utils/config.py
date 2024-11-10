@@ -20,7 +20,7 @@ __license__ = "GPLv3"
 import os
 import enum
 from pathlib import Path
-from core.config import SettingsBase
+from core.utils.config import SettingsBase
 
 
 class IdentityProviderType(enum.IntEnum):
