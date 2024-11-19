@@ -23,6 +23,7 @@ import jose
 import logging
 from typing import List, Tuple
 from jose import JWTError, jwt
+from fastapi import Request
 from pydantic import ValidationError
 from core.utils import AuthenticationError, sha256
 from core.models.account import Account
@@ -35,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 async def verify_token(
         session: AsyncSession,
+        request: Request,
         logger: logging.Logger,
         _x_real_ip: List[str],
         token: str
@@ -71,4 +73,9 @@ async def verify_token(
     access_token = result.scalar_one_or_none()
     if access_token is None or access_token.revoked:
         raise AuthenticationError("Token has been revoked. Please login again.")
+    # Check 4: Check CSRF token
+    if request.method in ["POST", "PUT", "DELETE"]:
+        csrf_token = request.headers.get('X-CSRF-Token')
+        if not csrf_token or csrf_token != access_token.value:
+            raise AuthenticationError("Invalid CSRF token.")
     return account, payload

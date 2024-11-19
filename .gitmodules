@@ -1,3 +1,3 @@
 [submodule "app/core"]
 	path = app/core
-	url = git@github.com:chopicalqui/lumina-core.git
+	url = https://github.com/chopicalqui/lumina-core.git

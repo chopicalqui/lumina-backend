@@ -22,7 +22,7 @@ __license__ = "GPLv3"
 import logging
 from uuid import UUID
 from typing import Annotated, List
-from fastapi import Body, Depends, Response, Header, Security, APIRouter, UploadFile, File, status
+from fastapi import Body, Depends, Response, Header, Security, APIRouter, UploadFile, File, status, Request
 from fastapi.security import SecurityScopes
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -63,6 +63,7 @@ router = APIRouter(
 
 
 async def get_current_account(
+    request: Request,
     security_scopes: SecurityScopes,
     session_token: str = Depends(oauth2_scheme),
     session: AsyncSession = Depends(get_db),
@@ -72,7 +73,7 @@ async def get_current_account(
     """
     Verifies the given token and returns the account if the token is valid and the account exists.
     """
-    user_account, payload = await verify_token(session, logger, x_real_ip, session_token)
+    user_account, payload = await verify_token(session, request, logger, x_real_ip, session_token)
     # Check 2: Check whether the token contains one of the required scopes.
     scoping_results = [scope in security_scopes.scopes for scope in payload.get("scopes", [])]
     if not any(scoping_results):

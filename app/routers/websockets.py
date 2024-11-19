@@ -69,8 +69,7 @@ def start_notify_account_listener():
 
 @router.websocket("")
 async def websocket_endpoint(
-    websocket: WebSocket,
-    account: Account = Security(get_current_account, scopes=[ApiPermissionEnum.websocket.name])
+    websocket: WebSocket
 ):
     """
     Websocket endpoint.

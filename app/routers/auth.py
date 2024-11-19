@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from routers.account import get_current_account
 from core.utils import AuthenticationError, IdpConnectionError
 from core.utils.logging import get_logger
-from utils.config import settings, COOKIE_NAME
+from utils.config import settings, COOKIE_NAME, CSRF_COOKIE_NAME
 from utils.idp.factory import IdentityProviderFactory
 from core.database import get_db
 from core.models.account import Account
@@ -82,7 +82,7 @@ async def callback(
             client_ip=x_real_ip[0] if x_real_ip else None,
             response=response
         )
-        token = await provider.get_token(session=session)
+        access_token, token = await provider.get_token(session=session)
         await session.commit()
         # Finally, we create and return the HTTP response.
         response = RedirectResponse("/", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
@@ -91,6 +91,14 @@ async def callback(
             str(token),
             httponly=True,
             secure=settings.https,
+            samesite="strict",
+            path="/api"
+        )
+        response.set_cookie(
+            CSRF_COOKIE_NAME,
+            token.value,
+            httponly=True,
+            secure=False,
             samesite="strict",
             path="/api"
         )

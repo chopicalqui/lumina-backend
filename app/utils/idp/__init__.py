@@ -84,7 +84,7 @@ class IdentityProviderBase:
         return token, access_token
 
     @staticmethod
-    async def create_token_for_account(session: AsyncSession, claim_account: Account) -> str:
+    async def create_token_for_account(session: AsyncSession, claim_account: Account) -> Tuple[str, str]:
         """
         This method performs all necessary checks
         """
@@ -94,14 +94,14 @@ class IdentityProviderBase:
         # Check if the account exists and is active. If it exists, then we update its roles.
         account = (await session.execute(
             select(Account).filter_by(email=claim_account.email)
-        )).first()
+        )).scalar_one_or_none()
         if not account:
             account = claim_account
             account.last_login = datetime.now()
             session.add(account)
         else:
             # If the account is inactive, then we do not allow it to log in.
-            if not account.is_active:
+            if not account.is_active():
                 raise AuthenticationError("You are not authorized to access this application.")
             claim_account.id = account.id
             account = await update_database_record(
@@ -127,13 +127,13 @@ class IdentityProviderBase:
             )
         # Finally, we create a valid token for the account.
         access_token_expires = timedelta(minutes=settings.oauth2_access_token_expire_minutes)
-        _, access_token = await IdentityProviderBase.create_token(
+        token, access_token = await IdentityProviderBase.create_token(
             session=session,
             account=account,
             token_type=AccessTokenType.user,
             expires=datetime.utcnow() + access_token_expires
         )
-        return access_token
+        return access_token, account.value
 
     @abstractmethod
     def _get_account_from_token(self, claims: dict) -> Account:
