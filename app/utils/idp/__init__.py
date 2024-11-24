@@ -84,7 +84,7 @@ class IdentityProviderBase:
         return token, access_token
 
     @staticmethod
-    async def create_token_for_account(session: AsyncSession, claim_account: Account) -> Tuple[str, str]:
+    async def create_token_for_account(session: AsyncSession, claim_account: Account) -> Tuple[str, AccessToken]:
         """
         This method performs all necessary checks
         """
@@ -133,7 +133,7 @@ class IdentityProviderBase:
             token_type=AccessTokenType.user,
             expires=datetime.utcnow() + access_token_expires
         )
-        return access_token, account.value
+        return access_token, token
 
     @abstractmethod
     def _get_account_from_token(self, claims: dict) -> Account:
@@ -142,7 +142,7 @@ class IdentityProviderBase:
         """
         ...
 
-    async def get_token(self, session: AsyncSession):
+    async def get_token(self, session: AsyncSession) -> Tuple[str, AccessToken]:
         access_token = await verify_token(self._token_data["access_token"])
         account = self._get_account_from_token(access_token)
         token = await self.create_token_for_account(session=session, claim_account=account)

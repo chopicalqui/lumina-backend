@@ -73,31 +73,31 @@ async def get_current_account(
     """
     Verifies the given token and returns the account if the token is valid and the account exists.
     """
-    user_account, payload = await verify_token(session, request, logger, x_real_ip, session_token)
+    account, payload = await verify_token(session, request, logger, x_real_ip, session_token)
     # Check 2: Check whether the token contains one of the required scopes.
     scoping_results = [scope in security_scopes.scopes for scope in payload.get("scopes", [])]
     if not any(scoping_results):
-        logger.critical(f"Account {user_account.email} tried to access scopes {security_scopes.scope_str}.")
-        raise AuthenticationError(f"Could not validate account: {user_account.email}")
+        logger.critical(f"Account {account.email} tried to access scopes {security_scopes.scope_str}.")
+        raise AuthenticationError(f"Could not validate account: {account.email}")
     # Check 3: Check whether the account's IP address has changed.
     # if x_real_ip and x_real_ip[0] != account.client_ip:
     #     logger.warning(f"Account {account.email} tried to access the application from a different IP address.")
     #     session.query(Account).filter_by(id=user_account.id).update({"client_ip": x_real_ip[0]})
     # We checked this already during login and only if the user is active we return the token.
-    if not user_account.is_active:
+    if not account.is_active:
         raise AuthenticationError()
-    return user_account
+    return account
 
 
 @router.get("/me", response_model=AccountReadMe)
-def read_me(
+async def read_me(
     account: Account = Security(get_current_account, scopes=[ApiPermissionEnum.account_me_read.name]),
     session: AsyncSession = Depends(get_db)
 ):
     """
     Allows users to obtain their account information.
     """
-    return get_by_id(session, Account, account.id)
+    return await get_by_id(session, Account, account.id)
 
 
 @router.get("/me/settings/avatar")

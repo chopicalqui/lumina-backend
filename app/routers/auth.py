@@ -88,7 +88,7 @@ async def callback(
         response = RedirectResponse("/", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
         response.set_cookie(
             COOKIE_NAME,
-            str(token),
+            access_token,
             httponly=True,
             secure=settings.https,
             samesite="strict",
@@ -106,19 +106,19 @@ async def callback(
     except ValueError as e:
         logger.exception(e)
         return RedirectResponse(
-            f"/login?msg={str(e)}",
+            f"/?msg={str(e)}",
             status_code=status.HTTP_307_TEMPORARY_REDIRECT
         )
     except (AuthenticationError, IdpConnectionError) as e:
         logger.exception(e)
         return RedirectResponse(
-            f"/login?msg={str(e)}",
+            f"/?msg={str(e)}",
             status_code=status.HTTP_307_TEMPORARY_REDIRECT
         )
     except Exception as e:
         logger.exception(e)
         return RedirectResponse(
-            "/login?msg=A general error occurred while logging in. Please try again.",
+            "/?msg=A general error occurred while logging in. Please try again.",
             status_code=status.HTTP_307_TEMPORARY_REDIRECT
         )
 

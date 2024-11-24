@@ -18,10 +18,12 @@ __copyright__ = "Copyright (C) 2024 Lukas Reiter"
 __license__ = "GPLv3"
 
 from fastapi import status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
+
+from core.utils.status import AlertSeverityEnum
 from . import create_fastapi_app
-from core.utils import AuthenticationError
-from utils.config import COOKIE_NAME
+from core.utils import AuthenticationError, StatusMessage
+from utils.config import COOKIE_NAME, CSRF_COOKIE_NAME
 
 prod_app = create_fastapi_app(True)
 test_app = create_fastapi_app(False)
@@ -33,6 +35,35 @@ def handle_authentication_errors(_request, _exc):
     """
     This function handles all exceptions of type AuthenticationError.
     """
-    response = RedirectResponse("/login", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+    response = RedirectResponse("/", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
     response.delete_cookie(COOKIE_NAME)
-    return response
+    response.delete_cookie(CSRF_COOKIE_NAME)
+    content = StatusMessage(
+        status=status.HTTP_401_UNAUTHORIZED,
+        severity=AlertSeverityEnum.error,
+        message="You are not authenticated.",
+    ).model_dump()
+    return JSONResponse(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        content=content
+    )
+
+
+@prod_app.exception_handler(Exception)
+@test_app.exception_handler(Exception)
+def handle_authentication_errors(_request, _exc):
+    """
+    This is the fallback exception handler.
+    """
+    response = RedirectResponse("/", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+    response.delete_cookie(COOKIE_NAME)
+    response.delete_cookie(CSRF_COOKIE_NAME)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content=StatusMessage(
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            severity=AlertSeverityEnum.error,
+            message="An unknown error occurred.",
+        ).dict()
+    )
+
