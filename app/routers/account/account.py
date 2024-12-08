@@ -32,9 +32,8 @@ from core.utils.logging import get_logger
 from core.database import get_db, update_database_record
 from core.models.file import verify_png_image
 from core.models.account import (
-    Account, AccountRead, AccountReadMe, AccountUpdateAdmin, TableDensityType
+    Account, AccountRead, AccountReadMe, AccountUpdateAdmin, TableDensityType, ApiPermissionEnum
 )
-from core.models.account.role import ApiPermissionEnum
 from core.database import get_by_id
 from core.utils.status import StatusMessage, AlertSeverityEnum
 from .token import verify_token
@@ -43,10 +42,9 @@ from utils.config import API_PREFIX
 
 API_ACCOUNT_SUFFIX = "/accounts"
 API_ME_SUFFIX = "/me"
-API_ME_SETTINGS_PREFIX = API_ME_SUFFIX + "/settings"
 API_ACCOUNT_PREFIX = API_PREFIX + API_ACCOUNT_SUFFIX
-API_ME_SUFFIX = API_ACCOUNT_PREFIX + API_ME_SUFFIX
-API_ME_SETTINGS_SUFFIX = API_ME_SUFFIX + API_ME_SETTINGS_PREFIX
+API_ME = API_ACCOUNT_PREFIX + API_ME_SUFFIX
+API_ME_SETTINGS = API_ME + "/settings"
 SUCCESS_MESSAGE = "Account updated successfully."
 FAILED_MESSAGE = "Account update failed."
 
@@ -101,7 +99,7 @@ async def read_me(
 
 
 @router.get("/me/settings/avatar")
-async def get_avatar(
+async def read_avatar(
     account: Account = Security(get_current_account, scopes=[ApiPermissionEnum.account_me_read.name])
 ):
     """

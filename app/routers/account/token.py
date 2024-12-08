@@ -26,9 +26,8 @@ from jose import JWTError, jwt
 from fastapi import Request
 from pydantic import ValidationError
 from core.utils import AuthenticationError, sha256
-from core.models.account import Account
-from core.models.account.token import AccessToken, AccessTokenType
-from utils.config import settings
+from core.models.account import Account, AccessToken, AccessTokenType
+from utils.config import settings, CSRF_COOKIE_NAME
 from sqlalchemy import or_, and_, not_
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,7 +55,12 @@ async def verify_token(
         logger.exception(ex)
         raise AuthenticationError()
     # Check 2: Check whether the account exists and is active.
-    account = (await session.execute(select(Account).filter_by(email=email))).scalar_one_or_none()
+    account = (
+        await session.execute(
+            select(Account)
+            .filter_by(email=email)
+        )
+    ).unique().scalars().one_or_none()
     if account is None or not account.is_active or not account.roles:
         raise AuthenticationError("Your account has been locked. Please contact the administrator.")
     # Check 3: Check whether the account's token has been revoked.
@@ -75,7 +79,7 @@ async def verify_token(
         raise AuthenticationError("Token has been revoked. Please login again.")
     # Check 4: Check CSRF token
     if request.method in ["POST", "PUT", "DELETE"]:
-        csrf_token = request.headers.get('X-CSRF-Token')
+        csrf_token = request.headers.get(CSRF_COOKIE_NAME)
         if not csrf_token or csrf_token != access_token.value:
             raise AuthenticationError("Invalid CSRF token.")
     return account, payload

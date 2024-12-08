@@ -32,9 +32,7 @@ from core.utils.logging import get_logger
 from utils.config import settings, COOKIE_NAME, CSRF_COOKIE_NAME
 from utils.idp.factory import IdentityProviderFactory
 from core.database import get_db
-from core.models.account import Account
-from core.models.account.role import ApiPermissionEnum
-from core.models.account.token import AccessToken, AccessTokenType
+from core.models.account import Account, ApiPermissionEnum, AccessToken, AccessTokenType
 
 router = APIRouter(
     prefix="/api",
@@ -97,10 +95,10 @@ async def callback(
         response.set_cookie(
             CSRF_COOKIE_NAME,
             token.value,
-            httponly=True,
-            secure=False,
+            httponly=False,
+            secure=settings.https,
             samesite="strict",
-            path="/api"
+            path="/"
         )
         return response
     except ValueError as e:

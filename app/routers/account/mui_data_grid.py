@@ -28,12 +28,13 @@ from core.utils.logging import get_logger
 from core.database import get_db
 from core.models.account import Account
 from core.models.account.role import ApiPermissionEnum
+from core.models.account.mui_data_grid import MuiDataGrid
 from core.utils.status import StatusMessage, AlertSeverityEnum
-from .account import SUCCESS_MESSAGE, FAILED_MESSAGE, API_ME_SETTINGS_SUFFIX, get_current_account
+from .account import SUCCESS_MESSAGE, FAILED_MESSAGE, API_ME_SETTINGS, get_current_account
 
 
-API_DATA_GRID_SUFFIX = "/datagrid"
-API_DATA_GRID_PREFIX = API_ME_SETTINGS_SUFFIX + API_DATA_GRID_SUFFIX
+API_DATA_GRID_SUFFIX = "/data-grid"
+API_DATA_GRID_PREFIX = API_ME_SETTINGS + API_DATA_GRID_SUFFIX
 
 router = APIRouter(
     prefix=API_DATA_GRID_PREFIX,
@@ -60,7 +61,7 @@ def read_account_datagrid_settings(
     return result[0].settings
 
 
-@router.put("/me/settings/datagrid/{guid}/reset", response_model=StatusMessage)
+@router.put("/{guid}/reset", response_model=StatusMessage)
 async def reset_account_datagrid_settings(
     guid: UUID,
     session: AsyncSession = Depends(get_db),
@@ -71,13 +72,14 @@ async def reset_account_datagrid_settings(
     Allows users to reset a specific MUI DataGrid configuration.
     """
     try:
-        if result := [item for item in account.data_grids if item.settings_id == guid]:
-            result[0].settings = {}
-            session.add(result[0])
+        result = await session.get(Account, account.id)
+        for item in [item for item in result.data_grids if item.settings_id == guid]:
+            item.settings = {}
+        else:
             await session.commit()
         return StatusMessage(
             status=status.HTTP_200_OK,
-            message=SUCCESS_MESSAGE,
+            message="DataGrid settings have been reset. You need to reload the page to see the changes.",
             severity=AlertSeverityEnum.success
         )
     except Exception as ex:
@@ -89,7 +91,7 @@ async def reset_account_datagrid_settings(
         )
 
 
-@router.put("/me/settings/datagrid/{guid}", response_model=StatusMessage)
+@router.put("/{guid}", response_model=StatusMessage)
 async def update_user_datagrid_settings(
     guid: UUID,
     setting: Dict,  # TODO: Add a Pydantic model for this.
@@ -107,7 +109,10 @@ async def update_user_datagrid_settings(
         result = await session.get(Account, account.id)
         if result := [item for item in result.data_grids if item.settings_id == guid]:
             result[0].settings = setting
-            await session.commit()
+        else:
+            result = await session.get(Account, account.id)
+            session.add(MuiDataGrid(settings_id=guid, settings=setting, account=result))
+        await session.commit()
         return StatusMessage(
             status=status.HTTP_200_OK,
             message=SUCCESS_MESSAGE,

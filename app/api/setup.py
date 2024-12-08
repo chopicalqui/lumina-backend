@@ -40,7 +40,7 @@ def handle_authentication_errors(_request, _exc):
     response.delete_cookie(CSRF_COOKIE_NAME)
     content = StatusMessage(
         status=status.HTTP_401_UNAUTHORIZED,
-        severity=AlertSeverityEnum.error,
+        severity=AlertSeverityEnum.info,
         message="You are not authenticated.",
     ).model_dump()
     return JSONResponse(

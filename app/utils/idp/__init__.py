@@ -29,8 +29,7 @@ from utils.auth import AuthenticationError, create_access_token, verify_token
 from utils.config import settings
 from core.utils import sha256
 from core.utils.logging import logger
-from core.models.account import Account
-from core.models.account.token import AccessToken, AccessTokenType
+from core.models.account import Account, AccessToken, AccessTokenType
 from core.database import update_database_record
 
 

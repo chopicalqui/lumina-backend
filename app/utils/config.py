@@ -31,8 +31,8 @@ class IdentityProviderType(enum.IntEnum):
 CURRENT_DIRECTORY = os.path.dirname(__file__)
 APP_DIRECTORY = Path(__file__).parent.parent
 API_PREFIX = "/api/v1"
-COOKIE_NAME = "access_token"
-CSRF_COOKIE_NAME = "csrf_token"
+COOKIE_NAME = "access-token"
+CSRF_COOKIE_NAME = "x-token"
 
 
 class Settings(SettingsBase):
