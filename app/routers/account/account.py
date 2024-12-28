@@ -21,7 +21,7 @@ __license__ = "GPLv3"
 
 import logging
 from uuid import UUID
-from typing import Annotated, List
+from typing import List
 from fastapi import Body, Depends, Response, Header, Security, APIRouter, UploadFile, File, status, Request
 from fastapi.security import SecurityScopes
 from sqlalchemy.future import select
@@ -114,7 +114,6 @@ async def read_avatar(
 async def update_my_avatar(
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_db),
-    logger: logging.Logger = Depends(get_logger),
     account: Account = Security(get_current_account, scopes=[ApiPermissionEnum.account_me_update.name])
 ):
     """
@@ -273,25 +272,25 @@ async def read_account(
 
 
 @router.put("", response_model=AccountRead)
-def update_account(
-    item: Annotated[AccountUpdateAdmin, Body],
+async def update_account(
     session: AsyncSession = Depends(get_db),
     logger: logging.Logger = Depends(get_logger),
-    _: Account = Security(get_current_account, scopes=[ApiPermissionEnum.account_me_update.name])
+    _: Account = Security(get_current_account, scopes=[ApiPermissionEnum.account_me_update.name]),
+    body: AccountUpdateAdmin = Body(...),
 ):
     """
     Updates an account.
     """
     try:
-        return update_database_record(
+        return await update_database_record(
             session=session,
-            source=item,
+            source=body,
             source_model=AccountUpdateAdmin,
             query_model=Account,
             commit=True
         )
     except NotFoundError as e:
         logger.exception(e)
-        return item
+        return body
     except Exception as e:
         raise InvalidDataError(str(e))

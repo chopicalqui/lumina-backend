@@ -56,7 +56,8 @@ class IdentityProviderBase:
             account: Account,
             token_type: AccessTokenType,
             expires: datetime.date,
-            token_name: str | None = None
+            token_name: str | None = None,
+            scopes: list[str] | None = None
     ) -> Tuple[AccessToken, str]:
         """
         This method creates a new token.
@@ -64,7 +65,7 @@ class IdentityProviderBase:
         access_token = create_access_token(
             data={
                 "sub": account.email,
-                "scopes": account.scopes_str,
+                "scopes": scopes or account.scopes_str,
                 "name": token_name,
                 "type": token_type.name
             },
@@ -96,7 +97,7 @@ class IdentityProviderBase:
         )).scalar_one_or_none()
         if not account:
             account = claim_account
-            account.last_login = datetime.now()
+            account.last_login = datetime.utcnow()
             session.add(account)
         else:
             # If the account is inactive, then we do not allow it to log in.
@@ -112,7 +113,7 @@ class IdentityProviderBase:
                 exclude_unset=True
             )
             # We have to save in local time because Postgres will convert and store it to UTC.
-            account.last_login = datetime.now()
+            account.last_login = datetime.utcnow()
             # We revoke all previously active account tokens.
             await session.execute(
                 update(AccessToken)

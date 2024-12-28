@@ -17,18 +17,23 @@ __author__ = "Lukas Reiter"
 __copyright__ = "Copyright (C) 2024 Lukas Reiter"
 __license__ = "GPLv3"
 
+import logging
 from fastapi import status
 from fastapi.responses import RedirectResponse, JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from core.utils.status import AlertSeverityEnum
 from . import create_fastapi_app
-from core.utils import AuthenticationError, StatusMessage
+from core.utils import AuthenticationError, AuthorizationError, StatusMessage
 from utils.config import COOKIE_NAME, CSRF_COOKIE_NAME
 
 prod_app = create_fastapi_app(True)
 test_app = create_fastapi_app(False)
+logger = logging.getLogger("guardian")
 
 
+@prod_app.exception_handler(AuthorizationError)
+@test_app.exception_handler(AuthorizationError)
 @prod_app.exception_handler(AuthenticationError)
 @test_app.exception_handler(AuthenticationError)
 def handle_authentication_errors(_request, _exc):
@@ -49,15 +54,16 @@ def handle_authentication_errors(_request, _exc):
     )
 
 
-@prod_app.exception_handler(Exception)
-@test_app.exception_handler(Exception)
+@prod_app.exception_handler(StarletteHTTPException)
+@test_app.exception_handler(StarletteHTTPException)
 def handle_authentication_errors(_request, _exc):
     """
     This is the fallback exception handler.
     """
-    response = RedirectResponse("/", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
-    response.delete_cookie(COOKIE_NAME)
-    response.delete_cookie(CSRF_COOKIE_NAME)
+    # response = RedirectResponse("/", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+    # response.delete_cookie(COOKIE_NAME)
+    # response.delete_cookie(CSRF_COOKIE_NAME)
+    logger.exception(_exc)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content=StatusMessage(
@@ -66,4 +72,3 @@ def handle_authentication_errors(_request, _exc):
             message="An unknown error occurred.",
         ).dict()
     )
-
