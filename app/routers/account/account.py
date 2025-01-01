@@ -41,10 +41,11 @@ from utils.config import API_PREFIX
 
 
 API_ACCOUNT_SUFFIX = "/accounts"
-API_ME_SUFFIX = "/me"
 API_ACCOUNT_PREFIX = API_PREFIX + API_ACCOUNT_SUFFIX
+API_ME_SUFFIX = "/me"
+API_ME_SETTINGS_SUFFIX = API_ME_SUFFIX + "/settings"
 API_ME = API_ACCOUNT_PREFIX + API_ME_SUFFIX
-API_ME_SETTINGS = API_ME + "/settings"
+API_ME_SETTINGS = API_ACCOUNT_PREFIX + API_ME_SETTINGS_SUFFIX
 SUCCESS_MESSAGE = "Account updated successfully."
 FAILED_MESSAGE = "Account update failed."
 
@@ -87,7 +88,7 @@ async def get_current_account(
     return account
 
 
-@router.get("/me", response_model=AccountReadMe)
+@router.get(API_ME_SUFFIX, response_model=AccountReadMe)
 async def read_me(
     account: Account = Security(get_current_account, scopes=[ApiPermissionEnum.account_me_read.name]),
     session: AsyncSession = Depends(get_db)
@@ -98,7 +99,7 @@ async def read_me(
     return await get_by_id(session, Account, account.id)
 
 
-@router.get("/me/settings/avatar")
+@router.get(API_ME_SETTINGS_SUFFIX + "/avatar")
 async def read_avatar(
     account: Account = Security(get_current_account, scopes=[ApiPermissionEnum.account_me_read.name])
 ):
@@ -110,7 +111,7 @@ async def read_avatar(
     return Response(content=account.avatar, media_type="image/png")
 
 
-@router.put("/me/settings/avatar", response_model=AccountRead)
+@router.put(API_ME_SETTINGS_SUFFIX + "/avatar", response_model=AccountRead)
 async def update_my_avatar(
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_db),
@@ -129,7 +130,7 @@ async def update_my_avatar(
     return result
 
 
-@router.put("/me/settings/avatar/reset", response_model=StatusMessage)
+@router.put(API_ME_SETTINGS_SUFFIX + "/avatar/reset", response_model=StatusMessage)
 async def reset_avatar(
     session: AsyncSession = Depends(get_db),
     logger: logging.Logger = Depends(get_logger),
@@ -157,7 +158,7 @@ async def reset_avatar(
         )
 
 
-@router.put("/me/settings/toggle-light-mode", response_model=StatusMessage)
+@router.put(API_ME_SETTINGS_SUFFIX + "/toggle-light-mode", response_model=StatusMessage)
 async def update_preferred_visual_mode(
     mode: bool,
     session: AsyncSession = Depends(get_db),
@@ -186,7 +187,7 @@ async def update_preferred_visual_mode(
         )
 
 
-@router.put("/me/settings/toggle-menu", response_model=StatusMessage)
+@router.put(API_ME_SETTINGS_SUFFIX + "/toggle-menu", response_model=StatusMessage)
 async def update_toggle_menu_setting(
     session: AsyncSession = Depends(get_db),
     logger: logging.Logger = Depends(get_logger),
@@ -213,7 +214,7 @@ async def update_toggle_menu_setting(
         )
 
 
-@router.put("/me/settings/table-density/{density}", response_model=StatusMessage)
+@router.put(API_ME_SETTINGS_SUFFIX + "/table-density/{density}", response_model=StatusMessage)
 async def update_preferred_table_density(
     density: str,
     session: AsyncSession = Depends(get_db),

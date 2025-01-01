@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import timedelta, datetime
 from utils.auth import AuthenticationError, create_access_token, verify_token
 from utils.config import settings
-from core.utils import sha256
+from core.utils import hmac_sha256
 from core.utils.logging import logger
 from core.models.account import Account, AccessToken, AccessTokenType
 from core.database import update_database_record
@@ -78,7 +78,7 @@ class IdentityProviderBase:
             type=token_type,
             revoked=False,
             expiration=expires,
-            value=sha256(access_token)
+            checksum=hmac_sha256(access_token, settings.hmac_key_access_token),
         )
         session.add(token)
         return token, access_token
@@ -97,7 +97,7 @@ class IdentityProviderBase:
         )).scalar_one_or_none()
         if not account:
             account = claim_account
-            account.last_login = datetime.utcnow()
+            account.last_login = datetime.now()
             session.add(account)
         else:
             # If the account is inactive, then we do not allow it to log in.
@@ -113,7 +113,7 @@ class IdentityProviderBase:
                 exclude_unset=True
             )
             # We have to save in local time because Postgres will convert and store it to UTC.
-            account.last_login = datetime.utcnow()
+            account.last_login = datetime.now()
             # We revoke all previously active account tokens.
             await session.execute(
                 update(AccessToken)

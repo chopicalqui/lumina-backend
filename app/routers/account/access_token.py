@@ -35,15 +35,15 @@ from core.utils import (
 from .account import API_ME, get_current_account
 from core.models.account import (
     Account, ApiPermissionEnum, AccessToken, AccessTokenRead, AccessTokenType, ROLE_PERMISSION_MAPPING,
-    AccessTokenCreate
+    AccessTokenCreate, AccessTokenReadTokenValue, AccessTokenUpdate
 )
 from core.database import get_db, get_by_id
 
-API_ME_ACCESS_TOKEN = API_ME + "/access-tokens"
+API_ME_ACCESS_TOKEN_SUFFIX = "/access-tokens"
 
 
 router = APIRouter(
-    prefix=API_ME_ACCESS_TOKEN,
+    prefix=API_ME,
     tags=["access token"],
     responses={
         401: {"description": "Unauthorized"},
@@ -55,7 +55,7 @@ router = APIRouter(
 )
 
 
-@router.get("", response_model=List[AccessTokenRead])
+@router.get(API_ME_ACCESS_TOKEN_SUFFIX, response_model=List[AccessTokenRead])
 async def read_access_tokens(
     account: Account = Security(get_current_account, scopes=[ApiPermissionEnum.access_token_read.name]),
     session: AsyncSession = Depends(get_db)
@@ -73,7 +73,7 @@ async def read_access_tokens(
     return result
 
 
-@router.get("/{id}", response_model=AccessTokenRead)
+@router.get(API_ME_ACCESS_TOKEN_SUFFIX + "/{id}", response_model=AccessTokenRead)
 async def read_access_token_by_id(
     id: UUID,
     account: Account = Security(get_current_account, scopes=[ApiPermissionEnum.access_token_read.name]),
@@ -108,11 +108,11 @@ def read_scopes(
     result = set()
     for role in account.roles:
         info = ROLE_PERMISSION_MAPPING[role.name]
-        result.update(tuple(item.items()) for item in info)
-    return [dict(tup) for tup in sorted(result)]
+        result.update((item, ApiPermissionEnum[item].value.description) for item in info)
+    return [{"id": key, "label": value} for key, value in sorted(result, key=lambda x: x[1])]
 
 
-@router.post("", response_model=AccessTokenRead)
+@router.post(API_ME_ACCESS_TOKEN_SUFFIX, response_model=AccessTokenReadTokenValue)
 async def create_access_token(
     account: Account = Security(get_current_account, scopes=[ApiPermissionEnum.access_token_create.name]),
     session: AsyncSession = Depends(get_db),
@@ -121,27 +121,37 @@ async def create_access_token(
     """
     Allows users to create an access token.
     """
-    scopes = []
+    possible_scopes = []
     # Obtain all user permissions
     for role in account.roles:
-        scopes += [item.get("id", "") for item in ROLE_PERMISSION_MAPPING.get(role.name, [])]
+        possible_scopes += [item for item in ROLE_PERMISSION_MAPPING.get(role.name, [])]
     # Ensure that only permissions within the user's privileges are used
-    for scope in body.scope:
-        if scope not in scopes:
+    for scope in body.scopes:
+        if scope not in possible_scopes:
             raise AuthorizationError(
                 account=account,
                 message=f"User does not have the permission '{scope}'."
             )
+    scopes = sorted(body.scopes)
     # Validate unique constraints
-    if account.get_access_token(body.name):
-        raise UniqueConstraintError("Access token with this name already exists.")
+    if (await session.execute(
+        select(AccessToken).filter(
+            and_(
+                AccessToken.name == body.name,
+                AccessToken.account_id == account.id,
+                AccessToken.type == AccessTokenType.api,
+                AccessToken.scopes == scopes
+            )
+        )
+    )).scalar_one_or_none():
+        raise UniqueConstraintError("Access token with this name or scopes already exists.")
     if body.expiration < datetime.now():
         raise InvalidDataError("Expiration date must be in the future.")
-    if len(body.scope or []) == 0:
+    if len(body.scopes or []) == 0:
         raise InvalidDataError("At least one scope must be provided.")
     # Create the access token
     user = await get_by_id(session, Account, account.id)
-    new_access_token, raw_access_token = IdentityProviderBase.create_token(
+    new_access_token, raw_access_token = await IdentityProviderBase.create_token(
         session=session,
         account=user,
         token_type=AccessTokenType.api,
@@ -149,17 +159,19 @@ async def create_access_token(
         token_name=body.name,
         scopes=scopes
     )
+    new_access_token.scopes = [ApiPermissionEnum[item] for item in scopes]
     await session.commit()
     await session.refresh(new_access_token)
-    new_access_token.value = raw_access_token
-    return new_access_token
+    result = AccessTokenReadTokenValue.from_orm(new_access_token)
+    result.value = raw_access_token
+    return result
 
 
-@router.put("", response_model=StatusMessage)
+@router.put(API_ME_ACCESS_TOKEN_SUFFIX, response_model=StatusMessage)
 async def update_access_token(
     account: Account = Security(get_current_account, scopes=[ApiPermissionEnum.access_token_update.name]),
     session: AsyncSession = Depends(get_db),
-    body: AccessTokenCreate = Body(...)
+    body: AccessTokenUpdate = Body(...)
 ):
     """
     Allows users to update an access token.
@@ -167,24 +179,24 @@ async def update_access_token(
     if token := (await session.execute(
         select(AccessToken).filter(
             and_(
-                AccessToken.user_id == account.id,
+                AccessToken.id == body.id,
                 AccessToken.account_id == account.id,
-                AccessToken.type == AccessTokenType.api,
+                AccessToken.type == AccessTokenType.api
             )
         )
     )).scalars().one_or_none():
         token.revoked = body.revoked
         await session.commit()
     return StatusMessage(
-        status_code=status.HTTP_200_OK,
+        status=status.HTTP_200_OK,
         severity=AlertSeverityEnum.success,
         message="Access token updated successfully."
     )
 
 
-@router.delete("/{id}", response_model=StatusMessage)
+@router.delete(API_ME_ACCESS_TOKEN_SUFFIX + "/{token_id}", response_model=StatusMessage)
 async def delete_access_token(
-    id: UUID,
+    token_id: UUID,
     account: Account = Security(get_current_account, scopes=[ApiPermissionEnum.access_token_delete.name]),
     session: AsyncSession = Depends(get_db)
 ):
@@ -194,17 +206,16 @@ async def delete_access_token(
     if token := (await session.execute(
         select(AccessToken).filter(
             and_(
-                AccessToken.user_id == account.id,
+                AccessToken.id == token_id,
                 AccessToken.account_id == account.id,
-                AccessToken.type == AccessTokenType.api,
-                AccessToken.id == id
+                AccessToken.type == AccessTokenType.api
             )
         )
     )).scalars().one_or_none():
         await session.delete(token)
         await session.commit()
     return StatusMessage(
-        status_code=status.HTTP_200_OK,
+        status=status.HTTP_200_OK,
         severity=AlertSeverityEnum.success,
         message="Access token deleted successfully."
     )

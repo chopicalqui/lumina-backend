@@ -25,7 +25,7 @@ from typing import List, Tuple
 from jose import JWTError, jwt
 from fastapi import Request
 from pydantic import ValidationError
-from core.utils import AuthenticationError, sha256
+from core.utils import AuthenticationError, hmac_sha256
 from core.models.account import Account, AccessToken, AccessTokenType
 from utils.config import settings, CSRF_COOKIE_NAME
 from sqlalchemy import or_, and_, not_
@@ -69,7 +69,7 @@ async def verify_token(
             and_(
                 AccessToken.account_id == account.id,
                 or_(AccessToken.type == AccessTokenType.user, AccessToken.type == AccessTokenType.api),
-                AccessToken.value == sha256(token),
+                AccessToken.checksum == hmac_sha256(token, settings.hmac_key_access_token),
                 not_(AccessToken.revoked)
             )
         )
@@ -80,6 +80,6 @@ async def verify_token(
     # Check 4: Check CSRF token
     if request.method in ["POST", "PUT", "DELETE"]:
         csrf_token = request.headers.get(CSRF_COOKIE_NAME)
-        if not csrf_token or csrf_token != access_token.value:
+        if not csrf_token or csrf_token != access_token.checksum:
             raise AuthenticationError("Invalid CSRF token.")
     return account, payload

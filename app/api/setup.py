@@ -24,7 +24,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from core.utils.status import AlertSeverityEnum
 from . import create_fastapi_app
-from core.utils import AuthenticationError, AuthorizationError, StatusMessage
+from core.utils import AuthenticationError, AuthorizationError, StatusMessage, LuminaError
 from utils.config import COOKIE_NAME, CSRF_COOKIE_NAME
 
 prod_app = create_fastapi_app(True)
@@ -51,6 +51,23 @@ def handle_authentication_errors(_request, _exc):
     return JSONResponse(
         status_code=status.HTTP_401_UNAUTHORIZED,
         content=content
+    )
+
+
+@prod_app.exception_handler(LuminaError)
+@test_app.exception_handler(LuminaError)
+def handle_authentication_errors(_request, exc):
+    """
+    This function handles all generic Lumina exceptions.
+    """
+    logger.exception(exc)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content=StatusMessage(
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            severity=AlertSeverityEnum.error,
+            message=str(exc),
+        ).dict()
     )
 
 

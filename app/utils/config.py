@@ -54,6 +54,7 @@ class Settings(SettingsBase):
         self.oauth2_algorithm = os.getenv("OAUTH2_ALGORITHM")
         self.oauth2_access_token_expire_minutes = int(os.getenv("OAUTH2_ACCESS_TOKEN_EXPIRE_MINUTES", 30))
         self.oauth2_refresh_token_expire_minutes = int(os.getenv("OAUTH2_REFRESH_TOKEN_EXPIRE_MINUTES", 60))
+        self.hmac_key_access_token = os.getenv("HMAC_KEY_ACCESS_TOKEN")
         self.client_id = os.getenv("CLIENT_ID")
         self.client_secret = os.getenv("CLIENT_SECRET")
         self.redirect_uri = os.getenv("REDIRECT_URI")

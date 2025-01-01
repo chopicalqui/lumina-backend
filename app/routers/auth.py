@@ -94,7 +94,7 @@ async def callback(
         )
         response.set_cookie(
             CSRF_COOKIE_NAME,
-            token.value,
+            token.checksum,
             httponly=False,
             secure=settings.https,
             samesite="strict",
