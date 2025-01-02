@@ -83,7 +83,7 @@ async def get_current_account(
     #     logger.warning(f"Account {account.email} tried to access the application from a different IP address.")
     #     session.query(Account).filter_by(id=user_account.id).update({"client_ip": x_real_ip[0]})
     # We checked this already during login and only if the user is active we return the token.
-    if not account.is_active:
+    if not account.is_active():
         raise AuthenticationError()
     return account
 
@@ -272,10 +272,9 @@ async def read_account(
     return result
 
 
-@router.put("", response_model=AccountRead)
+@router.put("", response_model=StatusMessage)
 async def update_account(
     session: AsyncSession = Depends(get_db),
-    logger: logging.Logger = Depends(get_logger),
     _: Account = Security(get_current_account, scopes=[ApiPermissionEnum.account_me_update.name]),
     body: AccountUpdateAdmin = Body(...),
 ):
@@ -283,15 +282,17 @@ async def update_account(
     Updates an account.
     """
     try:
-        return await update_database_record(
+        await update_database_record(
             session=session,
             source=body,
             source_model=AccountUpdateAdmin,
             query_model=Account,
             commit=True
         )
-    except NotFoundError as e:
-        logger.exception(e)
-        return body
-    except Exception as e:
-        raise InvalidDataError(str(e))
+    except Exception as ex:
+        raise ex from ex
+    return StatusMessage(
+        status=status.HTTP_200_OK,
+        severity=AlertSeverityEnum.success,
+        message="Account updated successfully."
+    )

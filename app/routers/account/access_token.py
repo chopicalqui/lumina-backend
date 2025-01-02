@@ -140,11 +140,12 @@ async def create_access_token(
                 AccessToken.name == body.name,
                 AccessToken.account_id == account.id,
                 AccessToken.type == AccessTokenType.api,
+                AccessToken.expiration == body.expiration,
                 AccessToken.scopes == scopes
             )
         )
     )).scalar_one_or_none():
-        raise UniqueConstraintError("Access token with this name or scopes already exists.")
+        raise UniqueConstraintError("Access token with same name, scopes and expiration already exists.")
     if body.expiration < datetime.now():
         raise InvalidDataError("Expiration date must be in the future.")
     if len(body.scopes or []) == 0:
@@ -162,8 +163,7 @@ async def create_access_token(
     new_access_token.scopes = [ApiPermissionEnum[item] for item in scopes]
     await session.commit()
     await session.refresh(new_access_token)
-    result = AccessTokenReadTokenValue.from_orm(new_access_token)
-    result.value = raw_access_token
+    result = AccessTokenReadTokenValue.model_construct(**new_access_token.dict(), value=raw_access_token)
     return result
 
 
