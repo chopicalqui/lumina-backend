@@ -22,22 +22,53 @@ __license__ = "GPLv3"
 import httpx
 from logging import Logger
 from typing import Union, List
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi import Depends, APIRouter, Security, status
 from sqlalchemy import and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from routers.account import get_current_account
-from core.utils import AuthenticationError, IdpConnectionError
+from core.utils import AuthenticationError, IdpConnectionError, StatusMessage
 from core.utils.logging import get_logger
 from utils.config import settings, COOKIE_NAME, CSRF_COOKIE_NAME
+from utils.idp import IdentityProviderBase
 from utils.idp.factory import IdentityProviderFactory
-from core.database import get_db
+from core.database import get_db, get_by_id
 from core.models.account import Account, ApiPermissionEnum, AccessToken, AccessTokenType
 
 router = APIRouter(
     prefix="/api",
     tags=["auth"]
 )
+
+
+def add_session_cookie(response: RedirectResponse | JSONResponse, access_token: str, token: str):
+    """
+    Adds the session cookies to the response.
+    """
+    response.set_cookie(
+        COOKIE_NAME,
+        access_token,
+        httponly=True,
+        secure=settings.https,
+        samesite="strict",
+        path="/api"
+    )
+    response.set_cookie(
+        CSRF_COOKIE_NAME,
+        token,
+        httponly=False,
+        secure=settings.https,
+        samesite="strict",
+        path="/"
+    )
+
+
+def delete_session_cookie(response: RedirectResponse):
+    """
+    Deletes the session cookies from the response.
+    """
+    response.delete_cookie(COOKIE_NAME, path="/api")
+    response.delete_cookie(CSRF_COOKIE_NAME, path="/")
 
 
 @router.get("/redirect-login")
@@ -84,22 +115,7 @@ async def callback(
         await session.commit()
         # Finally, we create and return the HTTP response.
         response = RedirectResponse("/", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
-        response.set_cookie(
-            COOKIE_NAME,
-            access_token,
-            httponly=True,
-            secure=settings.https,
-            samesite="strict",
-            path="/api"
-        )
-        response.set_cookie(
-            CSRF_COOKIE_NAME,
-            token.checksum,
-            httponly=False,
-            secure=settings.https,
-            samesite="strict",
-            path="/"
-        )
+        add_session_cookie(response, access_token, token.checksum)
         return response
     except ValueError as e:
         logger.exception(e)
@@ -121,7 +137,7 @@ async def callback(
         )
 
 
-@router.get("/logout")
+@router.post("/logout")
 async def logout(
         session: AsyncSession = Depends(get_db),
         account: Account = Security(get_current_account, scopes=[item.name for item in ApiPermissionEnum])
@@ -141,5 +157,33 @@ async def logout(
     await session.commit()
     # Create HTTP response
     response = RedirectResponse("/", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
-    response.delete_cookie(COOKIE_NAME)
+    delete_session_cookie(response)
+    return response
+
+
+@router.post("/renew")
+async def renew(
+        session: AsyncSession = Depends(get_db),
+        account: Account = Security(get_current_account, scopes=[ApiPermissionEnum.account_me_update.name])
+):
+    """
+    Issues a new session token.
+    """
+    claim_account = await get_by_id(session, Account, account.id)
+    access_token, token = await IdentityProviderBase.create_token_for_account(
+        session=session,
+        claim_account=claim_account
+    )
+    await session.commit()
+    # Finally, we create and return the HTTP response.
+    content = StatusMessage(
+        status=status.HTTP_200_OK,
+        severity="info",
+        message="Session token renewed."
+    ).model_dump()
+    response = JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=content
+    )
+    add_session_cookie(response, access_token, token.checksum)
     return response

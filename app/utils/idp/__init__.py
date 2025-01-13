@@ -24,8 +24,9 @@ from fastapi import status
 from sqlalchemy import update, and_
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import timedelta, datetime
-from utils.auth import AuthenticationError, create_access_token, verify_token
+from datetime import timedelta, datetime, timezone
+
+from utils.auth import AuthenticationError, sign_access_token, verify_token
 from utils.config import settings
 from core.utils import hmac_sha256
 from core.utils.logging import logger
@@ -62,7 +63,7 @@ class IdentityProviderBase:
         """
         This method creates a new token.
         """
-        access_token = create_access_token(
+        access_token = sign_access_token(
             data={
                 "sub": account.email,
                 "scopes": scopes or account.scopes_str,
@@ -71,20 +72,26 @@ class IdentityProviderBase:
             },
             expires=expires,
         )
-        # We add the new access token to the database.
-        token = AccessToken(
-            account=account,
-            name=token_name,
-            type=token_type,
-            revoked=False,
-            expiration=expires,
-            checksum=hmac_sha256(access_token, settings.hmac_key_access_token),
-        )
-        session.add(token)
-        return token, access_token
+        checksum = hmac_sha256(access_token, settings.hmac_key_access_token)
+        if not (result := (await session.execute(
+            select(AccessToken).filter_by(checksum=checksum)
+        )).scalar_one_or_none()):
+            result = AccessToken(
+                account=account,
+                name=token_name,
+                type=token_type,
+                revoked=False,
+                expiration=expires.replace(tzinfo=timezone.utc),
+                checksum=hmac_sha256(access_token, settings.hmac_key_access_token),
+            )
+            session.add(result)
+        return result, access_token
 
     @staticmethod
-    async def create_token_for_account(session: AsyncSession, claim_account: Account) -> Tuple[str, AccessToken]:
+    async def create_token_for_account(
+            session: AsyncSession,
+            claim_account: Account,
+    ) -> Tuple[str, AccessToken]:
         """
         This method performs all necessary checks
         """
@@ -92,10 +99,9 @@ class IdentityProviderBase:
         if len(claim_account.roles) == 0:
             raise AuthenticationError("You are not authorized to access this application.")
         # Check if the account exists and is active. If it exists, then we update its roles.
-        account = (await session.execute(
+        if not (account := (await session.execute(
             select(Account).filter_by(email=claim_account.email)
-        )).scalar_one_or_none()
-        if not account:
+        )).scalar_one_or_none()):
             account = claim_account
             account.last_login = datetime.now()
             session.add(account)
@@ -106,7 +112,7 @@ class IdentityProviderBase:
             claim_account.id = account.id
             account = await update_database_record(
                 session=session,
-                source=claim_account,
+                source=account,
                 source_model=Account,
                 query_model=Account,
                 commit=False,

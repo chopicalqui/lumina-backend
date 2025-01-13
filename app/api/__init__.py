@@ -20,6 +20,7 @@ __license__ = "GPLv3"
 import asyncio
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
+
 from core.utils.setup import init_db
 from routers import add_routes, CustomHeaderMiddleware
 from routers.websockets import notify_account_listener

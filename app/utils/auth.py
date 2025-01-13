@@ -59,16 +59,23 @@ class OAuth2PasswordBearerWithCookie(fastapi.security.OAuth2):
         })
         super().__init__(flows=flows, scheme_name=scheme_name, auto_error=auto_error)
 
-    async def __call__(self, request: Request) -> str | None:
+    @staticmethod
+    def get_session_token(request: Request, auto_error: bool = True) -> str | None:
+        """
+        Returns the session cookie
+        """
         authorization: str = request.cookies.get(COOKIE_NAME)
         authorization = f"Bearer {authorization}"
         scheme, param = get_authorization_scheme_param(authorization)
         if not authorization or scheme.lower() != "bearer":
-            if self.auto_error:
+            if auto_error:
                 raise AuthenticationError(message="Not authenticated")
             else:
                 return None
         return param
+
+    async def __call__(self, request: Request) -> str | None:
+        return self.get_session_token(request, self.auto_error)
 
 
 oauth2_scheme = OAuth2PasswordBearerWithCookie(
@@ -131,14 +138,12 @@ async def verify_token(token: str):
         )
         return payload
     except HTTPStatusError as e:
-        logger.exception(e)
         raise IdpConnectionError() from e
     except Exception as e:
-        logger.exception(e)
         raise AuthenticationError("It seems you are not authorized to access this application.") from e
 
 
-def create_access_token(data: dict, expires: datetime) -> str:
+def sign_access_token(data: dict, expires: datetime) -> str:
     """
     Create an access token for the given data.
     :param data: The dict to be signed.
