@@ -21,15 +21,17 @@ __license__ = "GPLv3"
 
 import uuid
 from typing import List
-from fastapi import Response, Depends, Security, APIRouter
+from fastapi import Body, Response, Depends, Security, APIRouter, status
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from utils.config import API_PREFIX
 from core.utils import NotFoundError
+from core.utils.status import StatusMessage, AlertSeverityEnum
 from core.database import get_db
 from core.models.account import Account
 from core.models.account.role import ApiPermissionEnum
-from core.models.country import Country, CountryLookup
+from core.models.country import Country, CountryRead, CountryLookup, CountryUpdate
 from routers.account import get_current_account
 
 API_COUNTRY_SUFFIX = "/countries"
@@ -49,7 +51,7 @@ router = APIRouter(
 )
 
 
-@router.get("", response_model=List[CountryLookup])
+@router.get("/lookup", response_model=List[CountryLookup])
 async def read_countries(
         session: AsyncSession = Depends(get_db),
         _: Account = Security(get_current_account, scopes=[ApiPermissionEnum.country_read.name])
@@ -57,13 +59,46 @@ async def read_countries(
     """
     Returns all country information.
     """
-    result = await session.execute(
-        select(Country).order_by(Country.name)
-    )
-    return result.scalars().all()
+    return (await session.scalars(
+        select(Country).where(Country.display).order_by(Country.default, Country.name)
+    )).all()
 
 
-@router.get("/{country_id}", response_model=CountryLookup)
+@router.get("", response_model=List[CountryRead])
+async def read_countries(
+        session: AsyncSession = Depends(get_db),
+        _: Account = Security(get_current_account, scopes=[ApiPermissionEnum.country_read.name])
+):
+    """
+    Returns all country information.
+    """
+    return (await session.scalars(
+        select(Country).where(Country.display).order_by(Country.default, Country.name)
+    )).all()
+
+
+@router.put("", response_model=StatusMessage)
+async def read_countries(
+        session: AsyncSession = Depends(get_db),
+        body: CountryUpdate = Body(...),
+        _: Account = Security(get_current_account, scopes=[ApiPermissionEnum.country_read.name])
+):
+    """
+    Returns all country information.
+    """
+    if result := (await session.scalars(
+        select(Country).where(Country.id == body.id).order_by(Country.default, Country.name)
+    )).all():
+        result.default = body.default
+        result.display = body.display
+    return StatusMessage(
+                status=status.HTTP_200_OK,
+                severity=AlertSeverityEnum.success,
+                message="Country successfully updated.",
+            )
+
+
+@router.get("/{country_id}", response_model=CountryRead)
 async def read_country(
         country_id: uuid.UUID,
         session: AsyncSession = Depends(get_db),
@@ -87,8 +122,8 @@ async def read_country_flag(
     """
     Returns flag by its country code.
     """
-    if not (country := (await session.execute(
+    if not (country := (await session.scalars(
             select(Country).filter_by(code=country_code.upper())
-    )).scalar_one_or_none()):
+    )).one_or_none()):
         raise NotFoundError("Country not found")
     return Response(content=country.svg_image, media_type="image/svg+xml")

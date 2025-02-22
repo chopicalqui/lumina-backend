@@ -67,6 +67,7 @@ def delete_session_cookie(response: RedirectResponse):
     """
     Deletes the session cookies from the response.
     """
+    response.headers["Clear-Site-Data"] = '"cache", "storage", "executionContexts", "clientHints"'
     response.delete_cookie(COOKIE_NAME, path="/api")
     response.delete_cookie(CSRF_COOKIE_NAME, path="/")
 
