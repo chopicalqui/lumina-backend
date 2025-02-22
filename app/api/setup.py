@@ -18,34 +18,92 @@ __copyright__ = "Copyright (C) 2024 Lukas Reiter"
 __license__ = "GPLv3"
 
 import logging
-from fastapi import status
+from fastapi import Request, status
 from fastapi.responses import RedirectResponse, JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from core.utils.status import AlertSeverityEnum
+from routers.account.token import get_account_by_token
+from routers.auth import delete_session_cookie
 from . import create_fastapi_app
 from core.utils import AuthenticationError, AuthorizationError, StatusMessage, LuminaError
-from utils.config import COOKIE_NAME, CSRF_COOKIE_NAME
+from core.utils.status import AlertSeverityEnum
+from core.utils.logging import InjectingFilter
+from core.models.account import Account
+from core.database import async_session
+from utils.auth import OAuth2PasswordBearerWithCookie
+from utils.errors.authentication_errors import AuthenticationErrorSkipLogging
 
 prod_app = create_fastapi_app(True)
 test_app = create_fastapi_app(False)
-logger = logging.getLogger("guardian")
+
+
+async def get_account_by_request(request: Request) -> Account | None:
+    """
+    Returns the account object by extracting and verifying the access token provided in the request.
+    """
+    result = None
+    try:
+        async with async_session() as session:
+            token = OAuth2PasswordBearerWithCookie.get_session_token(request)
+            result, _ = await get_account_by_token(session, token)
+    except Exception:
+        ...
+    return result
+
+
+async def get_logging(request: Request) -> logging.Logger:
+    """
+    Initializes the logger for exception handling.
+    """
+    result = logging.getLogger(__name__)
+    try:
+        account = await get_account_by_request(request)
+        result.addFilter(InjectingFilter(account, request))
+    except Exception:
+        ...
+    return result
+
+
+@prod_app.exception_handler(AuthenticationErrorSkipLogging)
+@test_app.exception_handler(AuthenticationErrorSkipLogging)
+async def handle_skip_logging_errors(request: Request, exc: Exception):
+    """
+    This function handles all exceptions of type AuthenticationErrorSkipLogging.
+    """
+    # Log the exception together with the account information.
+    logger = await get_logging(request)
+    logger.info(str(exc))
+    # Prepare the response.
+    response = RedirectResponse("/", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+    delete_session_cookie(response)
+    content = StatusMessage(
+        status=status.HTTP_401_UNAUTHORIZED,
+        severity=AlertSeverityEnum.error,
+        message="You are not authenticated.",
+    ).model_dump()
+    return JSONResponse(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        content=content
+    )
 
 
 @prod_app.exception_handler(AuthorizationError)
 @test_app.exception_handler(AuthorizationError)
 @prod_app.exception_handler(AuthenticationError)
 @test_app.exception_handler(AuthenticationError)
-def handle_authentication_errors(_request, _exc):
+async def handle_authentication_errors(request: Request, exc: Exception):
     """
     This function handles all exceptions of type AuthenticationError.
     """
+    # Log the exception together with the account information.
+    logger = await get_logging(request)
+    logger.exception(exc)
+    # Prepare the response.
     response = RedirectResponse("/", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
-    response.delete_cookie(COOKIE_NAME)
-    response.delete_cookie(CSRF_COOKIE_NAME)
+    delete_session_cookie(response)
     content = StatusMessage(
         status=status.HTTP_401_UNAUTHORIZED,
-        severity=AlertSeverityEnum.info,
+        severity=AlertSeverityEnum.error,
         message="You are not authenticated.",
     ).model_dump()
     return JSONResponse(
@@ -56,11 +114,14 @@ def handle_authentication_errors(_request, _exc):
 
 @prod_app.exception_handler(LuminaError)
 @test_app.exception_handler(LuminaError)
-def handle_authentication_errors(_request, exc):
+async def handle_lumina_errors(request: Request, exc: Exception):
     """
     This function handles all generic Lumina exceptions.
     """
+    # Log the exception together with the account information.
+    logger = await get_logging(request)
     logger.exception(exc)
+    # Prepare the response.
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content=StatusMessage(
@@ -71,16 +132,21 @@ def handle_authentication_errors(_request, exc):
     )
 
 
+@prod_app.exception_handler(Exception)
+@test_app.exception_handler(Exception)
 @prod_app.exception_handler(StarletteHTTPException)
 @test_app.exception_handler(StarletteHTTPException)
-def handle_authentication_errors(_request, _exc):
+async def handle_default_errors(request: Request, exc: Exception):
     """
-    This is the fallback exception handler.
+    This is the fallback exception handler for HTTP-related exceptions.
     """
+    # Log the exception together with the account information.
+    logger = await get_logging(request)
+    logger.exception(exc)
+    # Prepare the response.
     # response = RedirectResponse("/", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
     # response.delete_cookie(COOKIE_NAME)
     # response.delete_cookie(CSRF_COOKIE_NAME)
-    logger.exception(_exc)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content=StatusMessage(

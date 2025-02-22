@@ -26,8 +26,8 @@ from fastapi import Body, Depends, Response, Header, Security, APIRouter, Upload
 from fastapi.security import SecurityScopes
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from utils.auth import oauth2_scheme
-from core.utils import NotFoundError, InvalidDataError, AuthenticationError
+
+from core.utils import NotFoundError, AuthorizationError
 from core.utils.logging import get_logger
 from core.database import get_db, update_database_record
 from core.models.file import verify_png_image
@@ -37,7 +37,9 @@ from core.models.account import (
 from core.database import get_by_id
 from core.utils.status import StatusMessage, AlertSeverityEnum
 from .token import verify_token
+from utils.auth import oauth2_scheme
 from utils.config import API_PREFIX
+from utils.errors.authentication_errors import AccountLockedError
 
 
 API_ACCOUNT_SUFFIX = "/accounts"
@@ -72,19 +74,18 @@ async def get_current_account(
     """
     Verifies the given token and returns the account if the token is valid and the account exists.
     """
-    account, payload = await verify_token(session, request, logger, x_real_ip, session_token)
+    account, payload = await verify_token(session, request, x_real_ip, session_token)
     # Check 2: Check whether the token contains one of the required scopes.
     scoping_results = [scope in security_scopes.scopes for scope in payload.get("scopes", [])]
     if not any(scoping_results):
-        logger.critical(f"Account {account.email} tried to access scopes {security_scopes.scope_str}.")
-        raise AuthenticationError(f"Could not validate account: {account.email}")
+        raise AuthorizationError(f"Could not validate account: {account.email}")
     # Check 3: Check whether the account's IP address has changed.
     # if x_real_ip and x_real_ip[0] != account.client_ip:
     #     logger.warning(f"Account {account.email} tried to access the application from a different IP address.")
     #     session.query(Account).filter_by(id=user_account.id).update({"client_ip": x_real_ip[0]})
     # We checked this already during login and only if the user is active we return the token.
     if not account.is_active():
-        raise AuthenticationError()
+        raise AccountLockedError()
     return account
 
 

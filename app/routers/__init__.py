@@ -26,6 +26,7 @@ from routers.account import router as account_router
 from routers.account.access_token import router as account_access_token_router
 from routers.websockets import router as websocket_router
 from routers.account.mui_data_grid import router as account_mui_data_grid_router
+from routers.account.mui_data_grid_filter import router as account_mui_data_grid_router_filter
 from routers.account.notification import router as account_notification_router
 
 
@@ -59,5 +60,6 @@ def add_routes(app):
     app.include_router(account_router)
     app.include_router(account_access_token_router)
     app.include_router(account_mui_data_grid_router)
+    app.include_router(account_mui_data_grid_router_filter)
     app.include_router(account_notification_router)
     app.include_router(websocket_router)

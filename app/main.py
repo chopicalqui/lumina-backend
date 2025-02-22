@@ -18,8 +18,11 @@ __copyright__ = "Copyright (C) 2024 Lukas Reiter"
 __license__ = "GPLv3"
 
 import os
+import logging
 from pathlib import Path
 from dotenv import load_dotenv
+
+from core.utils.logging import log_format, log_date_format
 
 # We load the environment variables from the .env files.
 APP_DIRECTORY = Path(__file__).parent.parent.parent.parent / "envs"
@@ -30,6 +33,10 @@ load_dotenv(APP_DIRECTORY / ".env.backend.core")
 load_dotenv(APP_DIRECTORY / ".env.redis")
 
 from api.setup import prod_app as app, test_app as test
+
+
+for handler in logging.root.handlers:
+    handler.setFormatter(logging.Formatter(log_format, datefmt=log_date_format))
 
 
 def main():

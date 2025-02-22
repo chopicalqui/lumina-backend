@@ -19,7 +19,9 @@ __license__ = "GPLv3"
 
 import asyncio
 from fastapi import FastAPI
+from fastapi.responses import ORJSONResponse
 from contextlib import asynccontextmanager
+
 from core.utils.setup import init_db
 from routers import add_routes, CustomHeaderMiddleware
 from routers.websockets import notify_account_listener
@@ -49,7 +51,8 @@ def create_fastapi_app(prod: bool):
         lifespan=lifespan,
         openapi_url=None if prod else "/openapi.json",
         docs_url=None if prod else "/docs",
-        redoc_url=None if prod else "/redoc"
+        redoc_url=None if prod else "/redoc",
+        default_response_class=ORJSONResponse
     )
     add_routes(app)
     app.add_middleware(CustomHeaderMiddleware)
