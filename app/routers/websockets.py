@@ -21,13 +21,16 @@ import json
 import asyncio
 import logging
 from typing import Dict
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Security
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from routers.account.token import verify_token
 from core.database import settings_base as settings
-from core.utils.websockets import manager
-from core.models.account import WebSocketNotifyAccount as NotifyAccount, Account
-from core.models.account.role import ApiPermissionEnum
+from core.utils.websockets import manager, WebSocketWrapper
+from core.models.account import WebSocketNotifyAccount as NotifyAccount
+from core.database import get_db
 from core.database.redis_client import subscribe
-from routers.account import get_current_account
+from utils.config import COOKIE_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +49,7 @@ async def notify_account_listener():
             try:
                 json_object = message if isinstance(message, dict) else json.loads(message)
                 notify = NotifyAccount(**json_object)
-                await manager.send(user=notify.user, status=notify.status)
+                await manager.send(notify=notify)
             except Exception as e:
                 logger.exception(e)
         await subscribe(
@@ -67,24 +70,46 @@ def start_notify_account_listener():
     asyncio.create_task(notify_account_listener())
 
 
+async def listen_to_messages(websocket: WebSocketWrapper):
+    """
+    Listens to the messages from the WebSocket.
+    """
+    while True:
+        try:
+            await websocket.receive_json()
+        except WebSocketDisconnect:
+            break
+        except Exception as e:
+            logger.exception(e)
+            break
+
+
 @router.websocket("")
 async def websocket_endpoint(
-    websocket: WebSocket
+    websocket: WebSocket,
+    session: AsyncSession = Depends(get_db),
 ):
     """
     Websocket endpoint.
     """
-    await manager.connect(websocket=websocket, user=account)
-    # await manager.send(
-    #     status=StatusMessage(
-    #         status=status.HTTP_200_OK,
-    #         message="WebSocket connection established.",
-    #         severity=StatusEnum.success
-    #     ),
-    #     account=account
-    # )
+    session_cookie = websocket.cookies.get(COOKIE_NAME, "")
+    x_real_ip = [item.strip() for item in websocket.headers.get("x-real-ip", "").split(",")]
+    # 1. We verify the access token and user access
+    account, payload, access_token = await verify_token(
+        session=session,
+        token=session_cookie,
+        _x_real_ip=x_real_ip,
+        request=websocket
+    )
+    wrapper = WebSocketWrapper(
+        account=account,
+        websocket=websocket,
+        token=access_token.checksum
+    )
+    await manager.connect(websocket=wrapper, account=account)
+    # Start listening in a background task
+    task = asyncio.create_task(listen_to_messages(wrapper))
     try:
-        while True:
-            await websocket.receive_json()
-    except WebSocketDisconnect:
-        await manager.disconnect(websocket=websocket, account=account)
+        await task
+    finally:
+        await manager.disconnect(account_id=account.id)

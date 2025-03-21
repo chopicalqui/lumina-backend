@@ -22,7 +22,7 @@ __license__ = "GPLv3"
 import jose
 from typing import List, Tuple
 from jose import JWTError, jwt
-from fastapi import Request
+from fastapi import Request, WebSocket
 from pydantic import ValidationError
 from sqlalchemy import or_, and_, not_
 from sqlalchemy.future import select
@@ -60,10 +60,10 @@ async def get_account_by_token(session: AsyncSession, token: str | None) -> Tupl
 
 async def verify_token(
         session: AsyncSession,
-        request: Request,
+        request: Request | WebSocket,
         _x_real_ip: List[str],
         token: str
-) -> Tuple[Account, dict]:
+) -> Tuple[Account, dict, AccessToken]:
     """
     Verifies the integrity of the given token.
     """
@@ -87,8 +87,8 @@ async def verify_token(
     if access_token is None or access_token.revoked:
         raise SessionRevokedError()
     # Check 4: Check CSRF token
-    if request.method in ["POST", "PUT", "DELETE"]:
+    if isinstance(request, Request) and request.method in ["POST", "PUT", "DELETE"]:
         csrf_token = request.headers.get(CSRF_COOKIE_NAME)
         if not csrf_token or csrf_token != access_token.checksum:
             raise InvalidCsrfTokenError()
-    return account, payload
+    return account, payload, access_token

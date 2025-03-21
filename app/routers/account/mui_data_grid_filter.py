@@ -79,7 +79,7 @@ async def read_data_grid_filters(
     """
     Allows users to obtain their MUI DataGrid filters.
     """
-    result = (await session.execute(
+    result = (await session.scalars(
         select(MuiDataGridFilter)
         .join(MuiDataGrid, onclause=MuiDataGridFilter.data_grid_id == MuiDataGrid.id)
         .filter(
@@ -87,8 +87,8 @@ async def read_data_grid_filters(
                 MuiDataGrid.account_id == account.id,
                 MuiDataGrid.settings_id == data_grid_id
             )
-        )
-    )).scalars().all()
+        ).order_by(MuiDataGridFilter.name.asc())
+    )).all()
     return result
 
 

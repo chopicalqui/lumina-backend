@@ -34,12 +34,12 @@ async def lifespan(app: FastAPI):
     """
     # Startup events
     # Start listening to account notifications
-    # task = asyncio.create_task(notify_account_listener())
+    task = asyncio.create_task(notify_account_listener())
     # Initialize the database
     await init_db()
     yield
     # Shutdown events
-    # task.cancel()
+    task.cancel()
 
 
 def create_fastapi_app(prod: bool):

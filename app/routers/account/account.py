@@ -32,7 +32,7 @@ from core.utils.logging import get_logger
 from core.database import get_db, update_database_record
 from core.models.file import verify_png_image
 from core.models.account import (
-    Account, AccountRead, AccountReadMe, AccountUpdateAdmin, TableDensityType, ApiPermissionEnum
+    Account, AccountRead, AccountReadMe, AccountUpdateAdmin, ApiPermissionEnum, TableDensityUpdate
 )
 from core.database import get_by_id
 from core.utils.status import StatusMessage, AlertSeverityEnum
@@ -74,7 +74,7 @@ async def get_current_account(
     """
     Verifies the given token and returns the account if the token is valid and the account exists.
     """
-    account, payload = await verify_token(session, request, x_real_ip, session_token)
+    account, payload, _ = await verify_token(session, request, x_real_ip, session_token)
     # Check 2: Check whether the token contains one of the required scopes.
     scoping_results = [scope in security_scopes.scopes for scope in payload.get("scopes", [])]
     if not any(scoping_results):
@@ -112,7 +112,7 @@ async def read_avatar(
     return Response(content=account.avatar, media_type="image/png")
 
 
-@router.put(API_ME_SETTINGS_SUFFIX + "/avatar", response_model=AccountRead)
+@router.post(API_ME_SETTINGS_SUFFIX + "/avatar", response_model=StatusMessage)
 async def update_my_avatar(
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_db),
@@ -128,7 +128,11 @@ async def update_my_avatar(
     result.avatar = image_data
     await session.commit()
     await session.refresh(result)
-    return result
+    return StatusMessage(
+        status=status.HTTP_200_OK,
+        severity=AlertSeverityEnum.success,
+        message=SUCCESS_MESSAGE
+    )
 
 
 @router.put(API_ME_SETTINGS_SUFFIX + "/avatar/reset", response_model=StatusMessage)
@@ -161,7 +165,6 @@ async def reset_avatar(
 
 @router.put(API_ME_SETTINGS_SUFFIX + "/toggle-light-mode", response_model=StatusMessage)
 async def update_preferred_visual_mode(
-    mode: bool,
     session: AsyncSession = Depends(get_db),
     logger: logging.Logger = Depends(get_logger),
     account: Account = Security(get_current_account, scopes=[ApiPermissionEnum.account_me_update.name])
@@ -171,7 +174,7 @@ async def update_preferred_visual_mode(
     """
     try:
         result = await session.get(Account, account.id)
-        result.light_mode = not mode
+        result.light_mode = not result.light_mode
         session.add(result)
         await session.commit()
         return StatusMessage(
@@ -199,7 +202,7 @@ async def update_toggle_menu_setting(
     """
     try:
         result = await session.get(Account, account.id)
-        result.toggle_menu = not result.toggle_menu
+        result.sidebar_collapsed = not result.sidebar_collapsed
         await session.commit()
         return StatusMessage(
             status=status.HTTP_200_OK,
@@ -215,9 +218,9 @@ async def update_toggle_menu_setting(
         )
 
 
-@router.put(API_ME_SETTINGS_SUFFIX + "/table-density/{density}", response_model=StatusMessage)
+@router.put(API_ME_SETTINGS_SUFFIX + "/table-density", response_model=StatusMessage)
 async def update_preferred_table_density(
-    density: str,
+    body: TableDensityUpdate = Body(...),
     session: AsyncSession = Depends(get_db),
     logger: logging.Logger = Depends(get_logger),
     account: Account = Security(get_current_account, scopes=[ApiPermissionEnum.account_me_update.name])
@@ -226,9 +229,8 @@ async def update_preferred_table_density(
     Allows users to update their MUI DataGrid table density.
     """
     try:
-        density = TableDensityType[density]
         result = await session.get(Account, account.id)
-        result.table_density = density
+        result.table_density = body.density
         await session.commit()
         return StatusMessage(
             status=status.HTTP_200_OK,
@@ -252,10 +254,10 @@ async def read_accounts(
     """
     Returns all accounts.
     """
-    result = await session.execute(
+    result = await session.scalars(
         select(Account).order_by(Account.full_name)
     )
-    return result.scalars().all()
+    return result.all()
 
 
 @router.get("/{user_id}", response_model=AccountRead)

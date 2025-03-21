@@ -26,13 +26,15 @@ from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi import Depends, APIRouter, Security, status
 from sqlalchemy import and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from routers.account import get_current_account
 from core.utils import AuthenticationError, IdpConnectionError, StatusMessage
 from core.utils.logging import get_logger
 from utils.config import settings, COOKIE_NAME, CSRF_COOKIE_NAME
 from utils.idp import IdentityProviderBase
-from utils.idp.factory import IdentityProviderFactory
+from utils.idp.factory import IdentityProviderFactory, IdentityProviderNotFound
 from core.database import get_db, get_by_id
+from core.utils.websockets import manager
 from core.models.account import Account, ApiPermissionEnum, AccessToken, AccessTokenType
 
 router = APIRouter(
@@ -63,11 +65,11 @@ def add_session_cookie(response: RedirectResponse | JSONResponse, access_token: 
     )
 
 
-def delete_session_cookie(response: RedirectResponse):
+def delete_session_cookie(response: RedirectResponse | JSONResponse):
     """
     Deletes the session cookies from the response.
     """
-    response.headers["Clear-Site-Data"] = '"cache", "storage", "executionContexts", "clientHints"'
+    response.headers["Clear-Site-Data"] = '"cache", "storage", "clientHints"'
     response.delete_cookie(COOKIE_NAME, path="/api")
     response.delete_cookie(CSRF_COOKIE_NAME, path="/")
 
@@ -118,22 +120,18 @@ async def callback(
         response = RedirectResponse("/", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
         add_session_cookie(response, access_token, token.checksum)
         return response
-    except ValueError as e:
-        logger.exception(e)
-        return RedirectResponse(
-            f"/?msg={str(e)}",
-            status_code=status.HTTP_307_TEMPORARY_REDIRECT
-        )
-    except (AuthenticationError, IdpConnectionError) as e:
-        logger.exception(e)
-        return RedirectResponse(
-            f"/?msg={str(e)}",
-            status_code=status.HTTP_307_TEMPORARY_REDIRECT
-        )
     except Exception as e:
         logger.exception(e)
+        if isinstance(e, AuthenticationError):
+            message_id = "5f1a9d3a-e95e-4976-9ed8-2308a9b0a2fd"
+        elif isinstance(e, IdpConnectionError):
+            message_id = "5157ba8a-848e-4907-a7f7-07e9f9385e77"
+        elif isinstance(e, IdentityProviderNotFound):
+            message_id = "1e46be48-5696-4103-83a2-4f31fd6770f1"
+        else:
+            message_id = "78fac82f-0f11-458b-aa8a-2e9eecabe819"
         return RedirectResponse(
-            "/?msg=A general error occurred while logging in. Please try again.",
+            "/" + (f"#{message_id}" if message_id else ""),
             status_code=status.HTTP_307_TEMPORARY_REDIRECT
         )
 
@@ -156,8 +154,14 @@ async def logout(
         ).values(revoked=True)
     )
     await session.commit()
+    # We also close all established WebSockets
+    await manager.disconnect(account_id=account.id)
     # Create HTTP response
-    response = RedirectResponse("/", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+    response = JSONResponse(content=StatusMessage(
+        status=status.HTTP_200_OK,
+        severity="info",
+        message="Logged out."
+    ).model_dump())
     delete_session_cookie(response)
     return response
 

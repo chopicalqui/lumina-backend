@@ -22,9 +22,9 @@ from fastapi import Request, status
 from fastapi.responses import RedirectResponse, JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from . import create_fastapi_app
 from routers.account.token import get_account_by_token
 from routers.auth import delete_session_cookie
-from . import create_fastapi_app
 from core.utils import AuthenticationError, AuthorizationError, StatusMessage, LuminaError
 from core.utils.status import AlertSeverityEnum
 from core.utils.logging import InjectingFilter

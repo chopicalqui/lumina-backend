@@ -128,7 +128,7 @@ async def verify_token(token: str):
                     "e": key["e"]
                 }
         if len(rsa_key) == 0:
-            raise ValueError("No matching public key found.")
+            raise IdpConnectionError("No matching public key found.")
         payload = jwt.decode(
             token=token,
             key=rsa_key,
@@ -139,6 +139,8 @@ async def verify_token(token: str):
         return payload
     except HTTPStatusError as e:
         raise IdpConnectionError() from e
+    except IdpConnectionError as e:
+        raise e
     except Exception as e:
         raise AuthenticationError("It seems you are not authorized to access this application.") from e
 

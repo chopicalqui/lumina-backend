@@ -18,10 +18,21 @@ __copyright__ = "Copyright (C) 2024 Lukas Reiter"
 __license__ = "GPLv3"
 
 from httpx import Response
+
+from core.models.account import LuminaError
 from . import IdentityProviderBase
 from .adfs import AdfsIdentityProvider
 from .keycloak import KeycloakIdentityProvider
 from ..config import IdentityProviderType
+
+
+class IdentityProviderNotFound(LuminaError):
+    """
+    Raised when an identity provider is not found.
+    """
+    def __init__(self, idp_type: IdentityProviderType):
+        super().__init__(f"Provider type '{idp_type.name}' is unknown.")
+        self.status_code = 404
 
 
 class IdentityProviderFactory:
@@ -42,4 +53,4 @@ class IdentityProviderFactory:
         elif idp_type == IdentityProviderType.keycloak:
             return KeycloakIdentityProvider(response=response, client_ip=client_ip)
         else:
-            raise ValueError(f"Provider type '{idp_type.name}' is unknown.")
+            raise IdentityProviderNotFound(idp_type)
